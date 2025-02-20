@@ -1,6 +1,8 @@
+import datetime
 import os
 import requests
 import re
+
 from typing import Dict, Any
 from dotenv import load_dotenv
 
@@ -44,10 +46,14 @@ def parse_vuln_info(data):
         ip = vuln["ip"]
         profile = vuln["profile"]
         site = vuln["siteName"]
+        last_detected_date = vuln["last_detected_date"]
+        # Format the date (2025-02-18T23:59:59.000Z) to get Day-Month-Year - HH:MM:SS
+        last_detected_date = re.sub(r"T", " - ", last_detected_date)
+        last_detected_date = re.sub(r"\.\d+Z", "", last_detected_date)
 
         if name not in vulnerabilities_dict:
             vulnerabilities_dict[name] = []
-        vulnerabilities_dict[name].append([ip, profile, site])
+        vulnerabilities_dict[name].append([ip, profile, site, last_detected_date])
 
     # sort the dict by IP
     vulnerabilities_dict = dict(
@@ -55,6 +61,32 @@ def parse_vuln_info(data):
     )
 
     return vulnerabilities_dict
+
+
+def get_potential_false_positive(devices):
+    new_dict = {}
+    for key, value in devices.items():
+        name = key
+        ip = value[0][0]
+        profile = value[0][1]
+        site = value[0][2]
+        last_detection_date = value[0][3]
+
+        today = datetime.datetime.now()
+        formated_last_detection_date = datetime.datetime.strptime(
+            last_detection_date, "%Y-%m-%d - %H:%M:%S"
+        )
+        delta = today - formated_last_detection_date
+
+        if delta.days > 30:
+            new_dict[name] = [ip, profile, site, last_detection_date]
+    return new_dict
+
+
+def remove_false_positive(devices, false_positive):
+    for key in false_positive:
+        del devices[key]
+    return devices
 
 
 def get_description(cve_name):
@@ -67,6 +99,7 @@ def get_description(cve_name):
             if description.get("lang") == "en":
                 return description.get("value")
     return "English description not found"
+
 
 """
 Ancienne version avec API du NIST   
